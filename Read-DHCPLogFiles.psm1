@@ -63,7 +63,7 @@ function Read-DHCPLogFiles {
         Write-Verbose -Message $_
     })
 
-    foreach ($Log in $LogFiles[0]) {
+    foreach ($Log in $LogFiles) {
         Read-DHCPLog -LogFile $Log -V6:$V6
     }
 }
