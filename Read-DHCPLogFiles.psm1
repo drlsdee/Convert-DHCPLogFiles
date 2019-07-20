@@ -62,10 +62,12 @@ function Read-DHCPLogFiles {
     $LogFiles.ForEach({
         Write-Verbose -Message $_
     })
-
+    $Out = @()
     foreach ($Log in $LogFiles) {
-        Read-DHCPLog -LogFile $Log -V6:$V6
+        $Out += Read-DHCPLog -LogFile $Log -V6:$V6
     }
+    $Out = $Out | Sort-Object -Property DateTime -Descending
+    return $Out
 }
 
 Export-ModuleMember -Function "Read-DHCPLogFiles"
