@@ -10,10 +10,36 @@ function Read-DHCPLogFiles {
         [string]
         $Path,
 
+        # Encoding
+        [Parameter()]
+        [ValidateSet(
+            'ASCII',
+            'BigEndianUnicode',
+            'BigEndianUTF32',
+            'Byte',
+            'Default',
+            'OEM',
+            'String',
+            'Unicode',
+            'Unknown',
+            'UTF32',
+            'UTF7',
+            'UTF8'
+        )]
+        [string]
+        $Encoding = 'Default',
+
         [Parameter()]
         # Read logs for DHCP v6
         [switch]
         $V6,
+
+        # Use original headers from log files
+        [Parameter(
+            DontShow    = $true
+        )]
+        [switch]
+        $OriginalHeaders,
 
         # Log filename pattern for DHCP v4 logs
         [Parameter(
@@ -54,14 +80,12 @@ function Read-DHCPLogFiles {
         return
     }
 
+    $Out = @()
     Write-Verbose -Message "$myName Found $($LogFiles.Count) log files in the selected folder. Set the `"`$InformationPreference`" variable to `"Continue`" if you want to see the filenames."
     $LogFiles.ForEach({
         Write-Information -MessageData "$myName File found: $_"
+        $Out += Read-DHCPLog -Path $_ -Encoding $Encoding -V6:$V6 -OriginalHeaders:$OriginalHeaders
     })
-    $Out = @()
-    foreach ($Log in $LogFiles) {
-        $Out += Read-DHCPLog -LogFile $Log -V6:$V6
-    }
     $Out = $Out | Sort-Object -Property DateTime -Descending
     return $Out
 }
