@@ -1,73 +1,51 @@
-﻿function Read-DHCPLog {
-    param (
-        [Parameter(Mandatory)]
-        [string]
-        # Path to log file
-        $LogFile,
-
-        [Parameter()]
-        [switch]
-        $V6
-    )
-    if ($V6) {
-        Write-Verbose -Message "reading log file for DHCP V6..."
-        $CSVHead = 36
-        $HeaderString = "ID","Date","Time","Description","IPv6 Address","Host Name","Error Code","DUID Length","DUID bytes (hex)","UserName","DHCID","Subnet prefix"
-    } else {
-        Write-Verbose -Message "reading log file for DHCP V4..."
-        $CSVHead = 34
-        $HeaderString = "ID","Date","Time","Description","IP Address","Host Name","MAC Address","User Name","TransactionID","QResult","Probationtime","CorrelationID","Dhcid","VendorClass(Hex)","VendorClass(ASCII)","UserClass(Hex)","UserClass(ASCII)","RelayAgentInformation","DnsRegError"
-    }
-        Write-Verbose -Message "Read file:"
-        Write-Verbose -Message $LogFile
-        $LogContentRaw = Get-Content -Path $LogFile
-        Write-Verbose -Message "Table header is:"
-        Write-Verbose -Message ($HeaderString -join ",")
-        $EndL = $LogContentRaw.Count -1
-        $LogContent = $LogContentRaw[$CSVHead..$EndL]
-        [array]$TableRaw = ConvertFrom-Csv -InputObject $LogContent -Header $HeaderString
-        [array]$TableOut = @()
-        $TableRaw.ForEach({
-            [datetime]$EventDate = ($_.Date, $_.Time -join " ")
-            $EventContent = $_ | Select-Object -Property * -ExcludeProperty Date, Time
-            $EventContent | Add-Member -MemberType NoteProperty -Name "DateTime" -Value $EventDate
-            $TableOut += $EventContent
-        })
-        $Out = $TableOut | Sort-Object -Property DateTime -Descending
-        return $Out
+﻿[hashtable]$moduleStructure = @{
+    Private = "$($PSScriptRoot)\Functions\Private"
+    Public  = "$($PSScriptRoot)\Functions\Public"
 }
 
-function Read-DHCPLogFiles {
-    param (
-        [Parameter(Mandatory)]
-        # Path to folder with DHCP logs
-        [string]
-        $LogDir,
-
-        [Parameter()]
-        # Read logs for DHCP v6
-        [switch]
-        $V6
-    )
-    Write-Verbose -Message "Folder with log files is:"
-    Write-Verbose -Message $LogDir
-    if ($V6) {
-        Write-Verbose -Message "reading logs for DHCP V6..."
-        $LogFiles = (Get-ChildItem -Path $LogDir -File -Filter "*.log" | Where-Object {$_.BaseName -match "V6"} ).FullName
-    } else {
-        Write-Verbose -Message "reading logs for DHCP V4..."
-        $LogFiles = (Get-ChildItem -Path $LogDir -File -Filter "*.log" | Where-Object {$_.BaseName -notmatch "V6"} ).FullName
-    }
-    Write-Verbose -Message "Logfiles found in selected folder:"
-    $LogFiles.ForEach({
-        Write-Verbose -Message $_
+#   Importing classes before all
+[string]$psClassesPath  = "$($PSScriptRoot)\Classes"
+if ([System.IO.Directory]::Exists($psClassesPath)) {
+    [System.IO.FileInfo[]]$psClassesScripts = [System.IO.Directory]::EnumerateFiles($psClassesPath, '*.ps1', 'AllDirectories')
+    Write-Verbose -Message "Found $($psClassesScripts.Count) custom PowerShell classes..."
+    $psClassesScripts.ForEach({
+        [string]$psClassPath    = $_.FullName
+        [string]$psClassName    = $_.BaseName
+        Write-Verbose -Message "Importing custom class `"$($psClassName)`" from script: $($psClassPath)"
+        .   $psClassPath
     })
-    $Out = @()
-    foreach ($Log in $LogFiles) {
-        $Out += Read-DHCPLog -LogFile $Log -V6:$V6
-    }
-    $Out = $Out | Sort-Object -Property DateTime -Descending
-    return $Out
 }
 
-Export-ModuleMember -Function "Read-DHCPLogFiles"
+#   Importing functions
+$moduleStructure.Keys.ForEach({
+    [string]$psFunctionType     = $_.ToLowerInvariant()
+    [string]$psFunctionFolder   = $moduleStructure.$psFunctionType
+    if ([System.IO.Directory]::Exists($psFunctionFolder)) {
+        [System.IO.FileInfo[]]$psFunctionsAll   = [System.IO.Directory]::EnumerateFiles($psFunctionFolder, '*.ps1', 'AllDirectories')
+        Write-Verbose -Message "Found $($psFunctionsAll.Count) $($psFunctionType) functions."
+        $psFunctionsAll.ForEach({
+            [string]$psFunctionName = $_.BaseName
+            [string]$psFunctionPath = $_.FullName
+            Write-Verbose -Message "Importing $($psFunctionType) function `"$($psFunctionName)`" from script: $($psFunctionPath)"
+            .   $psFunctionPath
+
+            if ($psFunctionType -eq 'Public') {
+                Write-Verbose -Message "Exporting $($psFunctionType) function `"$($psFunctionName)`"."
+                Export-ModuleMember -Function $psFunctionName 
+                Write-Verbose -Message "Trying to get aliases for the function `"$($psFunctionName)`"..."
+                try {
+                    [System.Management.Automation.AliasInfo[]]$psAliasInfo = Get-Alias -Definition $psFunctionName -ErrorAction Stop
+                    [string[]]$psAliases    = $psAliasInfo.Name
+                    $psAliases.ForEach({
+                        [string]$psAliasName    = $_
+                        Write-Verbose -Message "Exporting alias `"$($psAliasName)`" for the function: $($psFunctionName)"
+                        Export-ModuleMember -Alias $psAliasName
+                    })
+                }
+                catch {
+                    Write-Verbose -Message "The function has no aliases: $($psFunctionName)"
+                }
+            }
+        })
+    }
+})
